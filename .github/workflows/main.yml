@@ -1,0 +1,46 @@
+# Databricks automation workflow with GitHub Actions.
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push for the main branch
+  push:
+    paths-ignore:
+      - .github
+      - dev
+    branches:
+      # Set your base branch name here
+      - main
+
+# A workflow run is made up of one or more jobs
+jobs:
+  # This workflow contains a single job called "deploy"
+  deploy:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABRICKS_HOST: ${{ secrets.DEPLOYMENT_TARGET_URL }}
+      DATABRICKS_TOKEN: ${{ secrets.DEPLOYMENT_TARGET_TOKEN }}
+      REPO_PATH: /Workspace/Users/298d93c8-93ed-4aed-b333-7e8a27ee0214/Amazon-stock-daata
+      DBFS_LIB_PATH: dbfs:/path/to/libraries/
+      LATEST_WHEEL_NAME: latest_wheel_name.whl
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      # Download the Databricks CLI. See https://github.com/databricks/setup-cli
+      - uses: databricks/setup-cli@main
+
+      # Extract branch name and store in environment file
+      - name: Extract branch name
+        shell: bash
+        run: echo "BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+
+
+      # Update Databricks Git folder
+      - name: Update Databricks Git folder
+        run: |
+          databricks repos update ${{ env.REPO_PATH }} --branch "${{ env.BRANCH }}"

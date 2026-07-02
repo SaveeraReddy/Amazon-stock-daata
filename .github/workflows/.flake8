@@ -1,0 +1,12 @@
+[flake8]
+builtins = spark,dbutils,display
+
+exclude =
+    *advanced_metric_campaign_program_data_report_v1.py*,
+    *BlockAI2.0-TFIDF-MODEL.py*,
+    *Advanced_Metric_Blockconnect_Report_v1.py*,
+    *User*Meta*Data*Clean*Up.py*,
+    *BlockAI_Cleanup_30_days_v2.py*,
+    *optimized_anomalies_to_db2_workflow_v1.py*,
+    *optimized_blockchain_flight_impression_workflow_v1.py*,
+    *Advance_Metric_Campaign_Report_v1.py*
