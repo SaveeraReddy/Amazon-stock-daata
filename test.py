@@ -1,4 +1,2 @@
-import pandas as pd
+print('hello')
 #dbutils 
-for i in range(10):
-    print(hello)
