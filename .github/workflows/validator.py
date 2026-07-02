@@ -7,7 +7,7 @@ from pathlib import Path
 def get_python_files():
     """
     Returns all Python files in the repository.
-    (Used for testing)
+    (For testing)
     """
     return [
         str(file)
@@ -26,9 +26,11 @@ def find_dbutils_in_comments(source):
         tokens = tokenize.generate_tokens(io.StringIO(source).readline)
 
         for token in tokens:
-            if token.type == tokenize.COMMENT:
-                if "dbutils" in token.string:
-                    lines.append(token.start[0])
+            if (
+                token.type == tokenize.COMMENT
+                and "dbutils" in token.string
+            ):
+                lines.append(token.start[0])
 
     except tokenize.TokenizeError:
         pass
@@ -37,6 +39,9 @@ def find_dbutils_in_comments(source):
 
 
 def check_dbutils(tree, source):
+    """
+    Checks dbutils usage.
+    """
     warnings = []
 
     dbutils_used = any(
@@ -62,6 +67,9 @@ def check_dbutils(tree, source):
 
 
 def check_try_except(tree):
+    """
+    Checks every except block contains raise.
+    """
     warnings = []
 
     for node in ast.walk(tree):
@@ -76,7 +84,6 @@ def check_try_except(tree):
                 )
 
                 if not raise_found:
-
                     warnings.append(
                         f"Line {handler.lineno}: "
                         "Except block should contain a raise statement."
@@ -86,13 +93,19 @@ def check_try_except(tree):
 
 
 def validate_file(file_path):
-
+    """
+    Validate a single file.
+    """
     warnings = []
 
     with open(file_path, "r", encoding="utf-8") as file:
         source = file.read()
 
-    tree = ast.parse(source)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # Syntax is already checked by another validator.
+        return warnings
 
     warnings.extend(check_dbutils(tree, source))
     warnings.extend(check_try_except(tree))
@@ -101,6 +114,8 @@ def validate_file(file_path):
 
 
 def main():
+
+    print("===== Custom Validator Running =====")
 
     files = get_python_files()
 
@@ -116,19 +131,19 @@ def main():
 
         warnings = validate_file(file)
 
-        if warnings:
-            for warning in warnings:
+        for warning in warnings:
+            total_warnings += 1
+            print(f"::warning file={file}::{warning}")
 
-                total_warnings += 1
-
-                print(f"::warning file={file}::{warning}")
-
-    print("------------------------------------")
+    print("\n---------------------------------------")
 
     if total_warnings == 0:
         print("All validations passed.")
     else:
-        print(f"Validation completed with {total_warnings} warning(s).")
+        print(
+            f"Validation completed with "
+            f"{total_warnings} warning(s)."
+        )
 
 
 if __name__ == "__main__":
