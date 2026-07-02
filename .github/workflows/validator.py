@@ -69,9 +69,9 @@ def check_dbutils(tree, source):
 def check_try_except(tree):
     """
     Checks:
-    1. At least one try block exists.
-    2. Every try has an except block.
-    3. Every except block contains raise.
+    1. Try block exists.
+    2. Except block exists.
+    3. Except contains raise.
     """
     warnings = []
 
@@ -80,16 +80,12 @@ def check_try_except(tree):
         if isinstance(node, ast.Try)
     ]
 
-    # No try block
     if not try_nodes:
-        warnings.append(
-            "No try-except block found."
-        )
+        warnings.append("No try-except block found.")
         return warnings
 
     for node in try_nodes:
 
-        # Try without except
         if not node.handlers:
             warnings.append(
                 f"Line {node.lineno}: "
@@ -97,7 +93,6 @@ def check_try_except(tree):
             )
             continue
 
-        # Check raise inside every except
         for handler in node.handlers:
 
             raise_found = any(
@@ -110,6 +105,28 @@ def check_try_except(tree):
                     f"Line {handler.lineno}: "
                     "Except block does not contain a raise statement."
                 )
+
+    return warnings
+
+
+def validate_file(file_path):
+    """
+    Runs all validations for a single file.
+    """
+
+    warnings = []
+
+    with open(file_path, "r", encoding="utf-8") as file:
+        source = file.read()
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # Syntax is validated by another workflow
+        return warnings
+
+    warnings.extend(check_dbutils(tree, source))
+    warnings.extend(check_try_except(tree))
 
     return warnings
 
