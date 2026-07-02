@@ -1,0 +1,31 @@
+name: PR Quality and Test Checks
+
+on:
+  pull_request:
+    branches: [ "dev",  "main" ]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip' 
+
+    - name: Install Databricks Testing Tools
+      run: |
+        pip install -r .github/workflows/requirements.txt
+
+    - name: Run Code Quality Check (Syntax Errors)
+      run: |
+        flake8 . --config=.github/workflows/.flake8 --count --select=E9,F63,F7,F82 --show-source --statistics
+        
+    - name: Run Code Quality Check (Warnings for Unused Imports)
+      run: |
+        flake8 . --config=.github/workflows/.flake8 --count --exit-zero --select=F401 --show-source --statistics
+        
