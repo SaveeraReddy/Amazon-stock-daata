@@ -17,6 +17,10 @@ jobs:
         python-version: '3.10'
         cache: 'pip' 
 
+    - name: flake files finding
+      run: |
+        find . -name "*"
+
     - name: Install Databricks Testing Tools
       run: |
         pip install -r .github/workflows/requirements.txt
