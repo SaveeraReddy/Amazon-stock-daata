@@ -1,30 +1,19 @@
 import ast
 import io
-import subprocess
 import tokenize
 from pathlib import Path
 
 
-def get_changed_files():
+def get_python_files():
     """
-    Returns all changed Python files in the PR.
+    Returns all Python files in the repository.
+    (Used for testing)
     """
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main...HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-        return [
-            file
-            for file in result.stdout.splitlines()
-            if file.endswith(".py") and Path(file).exists()
-        ]
-
-    except subprocess.CalledProcessError:
-        return []
+    return [
+        str(file)
+        for file in Path(".").rglob("*.py")
+        if ".github/workflows" not in str(file)
+    ]
 
 
 def find_dbutils_in_comments(source):
@@ -48,34 +37,23 @@ def find_dbutils_in_comments(source):
 
 
 def check_dbutils(tree, source):
-    """
-    Checks whether dbutils is used.
-    """
     warnings = []
 
-    dbutils_used = False
-
-    for node in ast.walk(tree):
-
-        if isinstance(node, ast.Name):
-
-            if node.id == "dbutils":
-                dbutils_used = True
-                break
+    dbutils_used = any(
+        isinstance(node, ast.Name) and node.id == "dbutils"
+        for node in ast.walk(tree)
+    )
 
     comment_lines = find_dbutils_in_comments(source)
 
     if not dbutils_used:
 
         if comment_lines:
-
             warnings.append(
-                "dbutils is mentioned only in comments. "
-                "Actual dbutils code is missing."
+                f"dbutils is mentioned only in comments "
+                f"(line(s): {', '.join(map(str, comment_lines))})."
             )
-
         else:
-
             warnings.append(
                 "dbutils is not used in this file."
             )
@@ -84,9 +62,6 @@ def check_dbutils(tree, source):
 
 
 def check_try_except(tree):
-    """
-    Checks every except block contains raise.
-    """
     warnings = []
 
     for node in ast.walk(tree):
@@ -127,25 +102,28 @@ def validate_file(file_path):
 
 def main():
 
-    files = get_changed_files()
+    files = get_python_files()
 
     if not files:
-        print("No changed Python files found.")
+        print("No Python files found.")
         return
 
     total_warnings = 0
 
     for file in files:
 
+        print(f"\nChecking: {file}")
+
         warnings = validate_file(file)
 
-        for warning in warnings:
+        if warnings:
+            for warning in warnings:
 
-            total_warnings += 1
+                total_warnings += 1
 
-            print(f"::warning file={file}::{warning}")
+                print(f"::warning file={file}::{warning}")
 
-    print("-------------------------------------")
+    print("------------------------------------")
 
     if total_warnings == 0:
         print("All validations passed.")
