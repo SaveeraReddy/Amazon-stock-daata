@@ -1,5 +1,6 @@
 import ast
 import io
+import sys
 import tokenize
 from pathlib import Path
 
@@ -156,12 +157,16 @@ def main():
     print("\n---------------------------------------")
 
     if total_warnings == 0:
-        print("All validations passed.")
-    else:
-        print(
-            f"Validation completed with "
-            f"{total_warnings} warning(s)."
-        )
+        print("✅ All validations passed.")
+        sys.exit(0)
+
+    print(
+        f"❌ Validation failed with "
+        f"{total_warnings} warning(s)."
+    )
+
+    # Fail the GitHub Action / PR
+    sys.exit(1)
 
 
 if __name__ == "__main__":
