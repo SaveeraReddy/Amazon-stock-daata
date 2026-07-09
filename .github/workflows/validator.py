@@ -2,24 +2,12 @@ import ast
 import io
 import sys
 import tokenize
-from pathlib import Path
+import os
 
 
-def get_python_files():
+def find_utility_in_comments(source):
     """
-    Returns all Python files in the repository.
-    (For testing)
-    """
-    return [
-        str(file)
-        for file in Path(".").rglob("*.py")
-        if ".github/workflows" not in str(file)
-    ]
-
-
-def find_dbutils_in_comments(source):
-    """
-    Returns line numbers where dbutils appears in comments.
+    Returns line numbers where 'utility.' appears in comments.
     """
     lines = []
 
@@ -27,53 +15,93 @@ def find_dbutils_in_comments(source):
         tokens = tokenize.generate_tokens(io.StringIO(source).readline)
 
         for token in tokens:
-            if (
-                token.type == tokenize.COMMENT
-                and "dbutils" in token.string
-            ):
+            if token.type == tokenize.COMMENT and "utility." in token.string:
                 lines.append(token.start[0])
 
-    except tokenize.TokenizeError:
+    except tokenize.TokenError:
         pass
 
     return lines
 
 
-def check_dbutils(tree, source):
+def check_utility(tree, source):
     """
-    Checks dbutils usage.
+    Checks:
+    1. databricks utility import exists
+    2. utility methods are used
     """
+
     warnings = []
 
-    dbutils_used = any(
-        isinstance(node, ast.Name) and node.id == "dbutils"
-        for node in ast.walk(tree)
-    )
+    import_found = False
+    utility_used = False
+    utility_names = {"utility"}
 
-    comment_lines = find_dbutils_in_comments(source)
+    for node in ast.walk(tree):
 
-    if not dbutils_used:
+        # Check imports
+        if isinstance(node, ast.ImportFrom):
+
+            # from databricks import utility
+            if node.module == "databricks":
+
+                for alias in node.names:
+                    if alias.name == "utility":
+                        import_found = True
+                        utility_names.add(alias.asname or alias.name)
+
+
+        elif isinstance(node, ast.Import):
+
+            # import databricks.utility as utility
+            for alias in node.names:
+                if alias.name == "databricks.utility":
+                    import_found = True
+                    utility_names.add(alias.asname or "utility")
+
+
+        # Check usage: utility.xxx()
+        elif isinstance(node, ast.Attribute):
+
+            if isinstance(node.value, ast.Name):
+
+                if node.value.id in utility_names:
+                    utility_used = True
+
+
+    comment_lines = find_utility_in_comments(source)
+
+
+    if not import_found:
+        warnings.append(
+            "Missing import: databricks utility import not found."
+        )
+
+
+    if not utility_used:
 
         if comment_lines:
             warnings.append(
-                f"dbutils is mentioned only in comments "
-                f"(line(s): {', '.join(map(str, comment_lines))})."
+                f"'utility.' found only in comments at line(s): "
+                f"{', '.join(map(str, comment_lines))}"
             )
         else:
             warnings.append(
-                "dbutils is not used in this file."
+                "No databricks utility method usage found."
             )
 
     return warnings
 
 
+
 def check_try_except(tree):
     """
     Checks:
-    1. Try block exists.
-    2. Except block exists.
-    3. Except contains raise.
+    1. Try exists
+    2. Except exists
+    3. Except contains raise
     """
+
     warnings = []
 
     try_nodes = [
@@ -81,18 +109,26 @@ def check_try_except(tree):
         if isinstance(node, ast.Try)
     ]
 
+
     if not try_nodes:
-        warnings.append("No try-except block found.")
+
+        warnings.append(
+            "No try-except block found."
+        )
+
         return warnings
+
 
     for node in try_nodes:
 
         if not node.handlers:
+
             warnings.append(
-                f"Line {node.lineno}: "
-                "Try block does not contain an except block."
+                f"Line {node.lineno}: Try block has no except."
             )
+
             continue
+
 
         for handler in node.handlers:
 
@@ -101,72 +137,161 @@ def check_try_except(tree):
                 for child in ast.walk(handler)
             )
 
+
             if not raise_found:
+
                 warnings.append(
-                    f"Line {handler.lineno}: "
-                    "Except block does not contain a raise statement."
+                    f"Line {handler.lineno}: Except block missing raise statement."
                 )
 
+
     return warnings
+
 
 
 def validate_file(file_path):
-    """
-    Runs all validations for a single file.
-    """
 
     warnings = []
 
-    with open(file_path, "r", encoding="utf-8") as file:
-        source = file.read()
 
     try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        # Syntax is validated by another workflow
+
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            source = file.read()
+
+
+    except Exception as e:
+
+        warnings.append(
+            f"Unable to read file: {e}"
+        )
+
         return warnings
 
-    warnings.extend(check_dbutils(tree, source))
-    warnings.extend(check_try_except(tree))
+
+
+    try:
+
+        tree = ast.parse(source)
+
+
+    except SyntaxError as e:
+
+        warnings.append(
+            f"Syntax error at line {e.lineno}: {e.msg}"
+        )
+
+        return warnings
+
+
+
+    warnings.extend(
+        check_utility(tree, source)
+    )
+
+    warnings.extend(
+        check_try_except(tree)
+    )
+
 
     return warnings
+
+
 
 
 def main():
 
-    print("===== Custom Validator Running =====")
+    print(
+        "===== Custom PR Validator Running ====="
+    )
 
-    files = get_python_files()
+
+    passed_files = sys.argv[1:]
+
+
+    print(
+        "Received files:",
+        passed_files
+    )
+
+
+    files = [
+
+        f for f in passed_files
+
+        if f.endswith(".py")
+        and os.path.exists(f)
+        and ".github/workflows" not in f
+
+    ]
+
+
+    print(
+        "Python files checked:",
+        files
+    )
+
 
     if not files:
-        print("No Python files found.")
-        return
+
+        print(
+            "❌ No Python files supplied for validation."
+        )
+
+        sys.exit(1)
+
+
 
     total_warnings = 0
 
+
+
     for file in files:
 
-        print(f"\nChecking: {file}")
+        print(
+            f"\nChecking: {file}"
+        )
+
 
         warnings = validate_file(file)
 
+
         for warning in warnings:
+
             total_warnings += 1
-            print(f"::warning file={file}::{warning}")
 
-    print("\n---------------------------------------")
+            print(
+                f"::error file={file}::{warning}"
+            )
 
-    if total_warnings == 0:
-        print("✅ All validations passed.")
-        sys.exit(0)
+
 
     print(
-        f"❌ Validation failed with "
-        f"{total_warnings} warning(s)."
+        "\n---------------------------------------"
     )
 
-    # Fail the GitHub Action / PR
-    sys.exit(1)
+
+    if total_warnings > 0:
+
+        print(
+            f"❌ Validation failed with {total_warnings} issue(s)."
+        )
+
+        sys.exit(1)
+
+
+
+    print(
+        "✅ All validations passed."
+    )
+
+    sys.exit(0)
+
 
 
 if __name__ == "__main__":

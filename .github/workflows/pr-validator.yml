@@ -10,6 +10,8 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0 
 
     - name: Setup Python
       uses: actions/setup-python@v4
@@ -24,11 +26,25 @@ jobs:
     - name: Run Code Quality Check (Syntax Errors)
       run: |
         flake8 . --config=.github/workflows/.flake8 --count --select=E9,F63,F7,F82 --show-source --statistics
+
+    - name: Get Changed Python Files in PR
+      id: changed-files
+      run: |
+        FILES=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD | grep '\.py$' | tr '\n' ' ' || true)
+        echo "PR_FILES=$FILES" >> $GITHUB_ENV
         
     - name: Run Code Quality Check (Warnings for Unused Imports)
       run: |
-        flake8 . --config=.github/workflows/.flake8 --count --exit-zero --select=F401 --show-source --statistics
-        
+        if [ -z "${{ env.PR_FILES }}" ]; then
+          echo "No Python files modified in this PR. Skipping unused imports check."
+        else
+          flake8 ${{ env.PR_FILES }} --config=.github/workflows/.flake8 --count --exit-zero --select=F401 --show-source --statistics
+        fi
+
     - name: Run Custom Validator
       run: |
-        python .github/workflows/validator.py
+        if [ -z "${{ env.PR_FILES }}" ]; then
+          echo "No Python files modified in this PR. Skipping custom validation."
+        else
+          python .github/workflows/validator.py ${{ env.PR_FILES }}
+        fi
