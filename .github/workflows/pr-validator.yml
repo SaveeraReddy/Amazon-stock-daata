@@ -29,12 +29,11 @@ jobs:
       ####################################################
       # Get changed files
       ####################################################
-      - name: Get changed files
+      - name: Get Changed Python Files in PR
+        id: changed-files
         run: |
-          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
-
-          echo "Changed files:"
-          cat changed_files.txt
+          FILES=$( (git diff --name-only --diff-filter=ACM HEAD~1 HEAD 2>/dev/null || git diff --name-only --diff-filter=ACM $(git rev-list --max-parents=0 HEAD) HEAD) | grep '\.py$' | tr '\n' ' ' || true)
+          echo "PR_FILES=$FILES" >> $GITHUB_ENV
 
       ####################################################
       # Prepare only changed files for Gitleaks
