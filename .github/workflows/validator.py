@@ -157,26 +157,12 @@ def check_try_except(tree):
     return warnings
 
 def check_secrets(source):
-    """
-    Checks for secrets such as Databricks Personal Access Tokens.
-    """
-
     warnings = []
 
     for secret_name, pattern in SECRET_PATTERNS:
-
-        matches = pattern.finditer(source)
-
-        for match in matches:
-
-            line_number = source.count(
-                "\n",
-                0,
-                match.start()
-            ) + 1
-
+        for match in pattern.finditer(source):
             warnings.append(
-                f"{secret_name} detected at line {line_number}."
+                f"Potential {secret_name} found: {match.group(0)}"
             )
 
     return warnings
