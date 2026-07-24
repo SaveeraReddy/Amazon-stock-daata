@@ -35,9 +35,18 @@ jobs:
         tar -xzf gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
         sudo mv gitleaks /usr/local/bin/
 
-    - name: Run Gitleaks Secret Scan
+    - name: Get changed files
       run: |
-        gitleaks detect --source . --no-git --verbose
+        git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
+
+    - name: Run Gitleaks on changed files
+      run: |
+        while IFS= read -r file; do
+        if [ -f "$file" ]; then
+          echo "Scanning $file"
+          gitleaks detect --source "$file" --no-git --verbose
+      fi
+    done < changed_files.txt
 
     - name: Setup Python
       uses: actions/setup-python@v4
