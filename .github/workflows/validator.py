@@ -3,8 +3,17 @@ import io
 import sys
 import tokenize
 import os
+import re
+# --------------------------------------------------------
+# Secret Detection
+# --------------------------------------------------------
 
-
+SECRET_PATTERNS = [
+    (
+        "Databricks Personal Access Token",
+        re.compile(r"\bdapi[a-zA-Z0-9]{32,}\b"),
+    ),
+]
 def find_utility_in_comments(source):
     """
     Returns line numbers where 'utility.' appears in comments.
@@ -147,7 +156,30 @@ def check_try_except(tree):
 
     return warnings
 
+def check_secrets(source):
+    """
+    Checks for secrets such as Databricks Personal Access Tokens.
+    """
 
+    warnings = []
+
+    for secret_name, pattern in SECRET_PATTERNS:
+
+        matches = pattern.finditer(source)
+
+        for match in matches:
+
+            line_number = source.count(
+                "\n",
+                0,
+                match.start()
+            ) + 1
+
+            warnings.append(
+                f"{secret_name} detected at line {line_number}."
+            )
+
+    return warnings
 
 def validate_file(file_path):
 
@@ -197,7 +229,9 @@ def validate_file(file_path):
     warnings.extend(
         check_try_except(tree)
     )
-
+    warnings.extend(
+        check_secrets(source)
+    )
 
     return warnings
 

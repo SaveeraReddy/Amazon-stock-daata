@@ -1,3 +1,8 @@
 from databricks import utility
-print('hello')
-print('world')
+
+token =  "TEST_DATABRICKS_TOKEN"
+
+try:
+    utility.fs.ls("/")
+except Exception:
+    raise
