@@ -35,10 +35,7 @@ jobs:
           FILES=$( (git diff --name-only --diff-filter=ACM HEAD~1 HEAD 2>/dev/null || git diff --name-only --diff-filter=ACM $(git rev-list --max-parents=0 HEAD) HEAD) | grep '\.py$' | tr '\n' ' ' || true)
           echo "PR_FILES=$FILES" >> $GITHUB_ENV
 
-      - name: Verify changed_files folder
-        run: |
-          echo "Contents of changed_files:"
-          find changed_files -type f
+      
       ####################################################
       # Run Gitleaks
       ####################################################
