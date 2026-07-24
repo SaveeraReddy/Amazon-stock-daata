@@ -2,61 +2,130 @@ name: PR Quality and Test Checks
 
 on:
   pull_request:
-    branches: [ "dev", "main" ]
+    branches:
+      - dev
+      - main
 
 jobs:
   test-and-lint:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Verify changed_files folder
+        run: |
+          echo "Contents of changed_files:"
+          find changed_files -type f
+      ####################################################
+      # Install Gitleaks
+      ####################################################
+      - name: Install Gitleaks
+        run: |
+          GITLEAKS_VERSION=8.24.2
+          wget https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
+          tar -xzf gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
+          sudo mv gitleaks /usr/local/bin/
 
-    - name: Install Gitleaks
-      run: |
-        GITLEAKS_VERSION=8.24.2
-        wget https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
-        tar -xzf gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
-        sudo mv gitleaks /usr/local/bin/
+      ####################################################
+      # Get changed files
+      ####################################################
+      - name: Get changed files
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
 
-    - name: Run Gitleaks Secret Scan
-      run: |
-        gitleaks detect --source . --no-git --verbose
+          echo "Changed files:"
+          cat changed_files.txt
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-        cache: 'pip'
+      ####################################################
+      # Prepare only changed files for Gitleaks
+      ####################################################
+      - name: Prepare changed files
+        run: |
+          mkdir changed_files
 
-    - name: Install Databricks Testing Tools
-      run: |
-        pip install -r .github/workflows/requirements.txt
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              mkdir -p "changed_files/$(dirname "$file")"
+              cp "$file" "changed_files/$file"
+            fi
+          done < changed_files.txt
 
-    - name: Run Code Quality Check (Syntax Errors)
-      run: |
-        flake8 . --config=.github/workflows/.flake8 --count --select=E9,F63,F7,F82 --show-source --statistics
+          echo "Files copied for Gitleaks:"
+          find changed_files
 
-    - name: Get Changed Python Files in PR
-      id: changed-files
-      run: |
-        FILES=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD | grep '\.py$' | tr '\n' ' ' || true)
-        echo "PR_FILES=$FILES" >> $GITHUB_ENV
+      ####################################################
+      # Run Gitleaks
+      ####################################################
+      - name: Run Gitleaks Secret Scan
+        run: |
+          gitleaks detect \
+            --source changed_files \
+            --no-git \
+            --verbose
 
-    - name: Run Code Quality Check (Warnings for Unused Imports)
-      run: |
-        if [ -z "${{ env.PR_FILES }}" ]; then
-          echo "No Python files modified in this PR. Skipping unused imports check."
-        else
-          flake8 ${{ env.PR_FILES }} --config=.github/workflows/.flake8 --count --exit-zero --select=F401 --show-source --statistics
-        fi
+      ####################################################
+      # Setup Python
+      ####################################################
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+          cache: "pip"
 
-    - name: Run Custom Validator
-      run: |
-        if [ -z "${{ env.PR_FILES }}" ]; then
-          echo "No Python files modified in this PR. Skipping custom validation."
-        else
-          python .github/workflows/validator.py ${{ env.PR_FILES }}
-        fi
+      ####################################################
+      # Install requirements
+      ####################################################
+      - name: Install Databricks Testing Tools
+        run: |
+          pip install -r .github/workflows/requirements.txt
+
+      ####################################################
+      # Syntax check
+      ####################################################
+      - name: Run Code Quality Check (Syntax Errors)
+        run: |
+          flake8 . \
+            --config=.github/workflows/.flake8 \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics
+
+      ####################################################
+      # Get changed Python files
+      ####################################################
+      - name: Get Changed Python Files in PR
+        run: |
+          FILES=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD | grep '\.py$' | tr '\n' ' ' || true)
+          echo "PR_FILES=$FILES" >> $GITHUB_ENV
+
+      ####################################################
+      # Flake8 on changed Python files
+      ####################################################
+      - name: Run Code Quality Check (Unused Imports)
+        run: |
+          if [ -z "${{ env.PR_FILES }}" ]; then
+            echo "No Python files modified."
+          else
+            flake8 ${{ env.PR_FILES }} \
+              --config=.github/workflows/.flake8 \
+              --count \
+              --exit-zero \
+              --select=F401 \
+              --show-source \
+              --statistics
+          fi
+
+      ####################################################
+      # Custom Validator
+      ####################################################
+      - name: Run Custom Validator
+        run: |
+          if [ -z "${{ env.PR_FILES }}" ]; then
+            echo "No Python files modified."
+          else
+            python .github/workflows/validator.py ${{ env.PR_FILES }}
+          fi
