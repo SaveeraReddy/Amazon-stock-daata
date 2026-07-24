@@ -35,7 +35,7 @@ jobs:
     - name: Run Gitleaks Secret Scan
       run: |
         gitleaks detect \
-          --source . \
+          --source \
           --no-git \
           --verbose
 
