@@ -13,7 +13,21 @@ jobs:
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
+    - name: Debug repository contents
+      run: |
+        echo "Current branch:"
+        git branch --show-current
 
+        echo ""
+        echo "Files in repository:"
+        find . -maxdepth 2 -type f
+
+        echo ""
+        echo "Git tracked files:"
+        git ls-files
+    - name: Show changed files
+      run: |
+        git diff --name-only origin/${{ github.base_ref }}...HEAD
     - name: Install Gitleaks
       run: |
         GITLEAKS_VERSION=8.24.2
