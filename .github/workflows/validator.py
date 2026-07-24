@@ -4,6 +4,7 @@ import sys
 import tokenize
 import os
 import re
+import subprocess
 # --------------------------------------------------------
 # Secret Detection
 # --------------------------------------------------------
@@ -235,7 +236,42 @@ def validate_file(file_path):
 
     return warnings
 
+# --------------------------------------------------------
+# NEW: Git debug context
+# --------------------------------------------------------
 
+def debug_git_context():
+    """
+    Prints git context so you can see WHY certain files are being
+    passed in — e.g. whether the diff is scoped to the latest commit
+    only, or to the whole PR history against the base branch.
+    """
+
+    print("===== Git Debug Context =====")
+
+    commands = {
+        "Current HEAD commit":        ["git", "log", "-1", "--oneline"],
+        "Current branch":             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        "Files changed vs HEAD~1":    ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+        "Files changed vs origin/main (full PR diff)":
+                                       ["git", "diff", "--name-only", "origin/main...HEAD"],
+    }
+
+    for label, cmd in commands.items():
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            output = result.stdout.strip() or "(none)"
+            print(f"\n{label}:")
+            print(output)
+        except Exception as e:
+            print(f"\n{label}: could not run ({e})")
+
+    print("\n==============================\n")
 
 
 def main():
