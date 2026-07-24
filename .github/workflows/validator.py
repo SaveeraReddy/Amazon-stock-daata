@@ -171,53 +171,28 @@ def validate_file(file_path):
 
     warnings = []
 
+    with open(file_path, "r", encoding="utf-8") as file:
+        source = file.read()
 
-    try:
+    # Always scan secrets
+    warnings.extend(check_secrets(source))
 
-        with open(
-            file_path,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            source = file.read()
-
-
-    except Exception as e:
-
-        warnings.append(
-            f"Unable to read file: {e}"
-        )
-
+    # Notebook?
+    if file_path.endswith(".ipynb"):
         return warnings
 
-
-
+    # Only Python files should be parsed
     try:
-
         tree = ast.parse(source)
 
-
     except SyntaxError as e:
-
         warnings.append(
             f"Syntax error at line {e.lineno}: {e.msg}"
         )
-
         return warnings
 
-
-
-    warnings.extend(
-        check_utility(tree, source)
-    )
-
-    warnings.extend(
-        check_try_except(tree)
-    )
-    warnings.extend(
-        check_secrets(source)
-    )
+    warnings.extend(check_utility(tree, source))
+    warnings.extend(check_try_except(tree))
 
     return warnings
 
