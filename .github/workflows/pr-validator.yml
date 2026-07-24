@@ -91,7 +91,7 @@ jobs:
       run: |
         PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
         PR_HEAD_PARENT=$(git rev-parse ${PR_HEAD_SHA}^)
-        FILES=$(git diff --name-only --diff-filter=ACM ${PR_HEAD_PARENT} ${PR_HEAD_SHA} | grep '\.py$' | tr '\n' ' ' || true)
+        FILES=$(git diff --name-only --diff-filter=ACM ${PR_HEAD_PARENT} ${PR_HEAD_SHA} | grep '\.(py|ipynb)$' | tr '\n' ' ' || true)
         echo "PR_FILES=$FILES" >> $GITHUB_ENV
 
     - name: Run Code Quality Check (Warnings for Unused Imports)
