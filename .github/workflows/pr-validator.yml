@@ -2,26 +2,42 @@ name: PR Quality and Test Checks
 
 on:
   pull_request:
-    branches:
-      - dev
-      - main
+    branches: [ "dev", "main" ]
 
 jobs:
   test-and-lint:
     runs-on: ubuntu-latest
 
     steps:
-    ####################################################
-    # Checkout
-    ####################################################
     - name: Checkout Code
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
 
-    ####################################################
-    # Install Gitleaks
-    ####################################################
+    - name: Debug repository contents
+      run: |
+        echo "Current branch:"
+        git branch --show-current
+
+        echo ""
+        echo "PR head SHA (actual latest PR commit):"
+        echo "${{ github.event.pull_request.head.sha }}"
+
+        echo ""
+        echo "Files in repository:"
+        find . -maxdepth 2 -type f
+
+        echo ""
+        echo "Git tracked files:"
+        git ls-files
+
+    - name: Show changed files
+      run: |
+        PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
+        PR_HEAD_PARENT=$(git rev-parse ${PR_HEAD_SHA}^)
+        echo "Comparing $PR_HEAD_PARENT (previous commit) to $PR_HEAD_SHA (latest PR commit)"
+        git diff --name-only ${PR_HEAD_PARENT} ${PR_HEAD_SHA}
+
     - name: Install Gitleaks
       run: |
         GITLEAKS_VERSION=8.24.2
@@ -29,80 +45,55 @@ jobs:
         tar -xzf gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
         sudo mv gitleaks /usr/local/bin/
 
-    ####################################################
-    # Secret Scan
-    ####################################################
-    - name: Run Gitleaks Secret Scan
+    - name: Get changed files
       run: |
-        gitleaks detect \
-          --source \
-          --no-git \
-          --verbose
+        PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
+        PR_HEAD_PARENT=$(git rev-parse ${PR_HEAD_SHA}^)
+        git diff --name-only ${PR_HEAD_PARENT} ${PR_HEAD_SHA} > changed_files.txt
 
-    ####################################################
-    # Setup Python
-    ####################################################
+    - name: Run Gitleaks on changed files
+      run: |
+        while IFS= read -r file; do
+          if [ -f "$file" ]; then
+            echo "Scanning $file"
+            gitleaks detect --source "$file" --no-git --verbose
+          fi
+        done < changed_files.txt
+
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
-        python-version: "3.10"
-        cache: "pip"
+        python-version: '3.10'
+        cache: 'pip'
 
-    ####################################################
-    # Install Requirements
-    ####################################################
     - name: Install Databricks Testing Tools
       run: |
         pip install -r .github/workflows/requirements.txt
 
-    ####################################################
-    # Syntax Check
-    ####################################################
-    - name: Run Syntax Check
+    - name: Run Code Quality Check (Syntax Errors)
       run: |
-        flake8 . \
-          --config=.github/workflows/.flake8 \
-          --count \
-          --select=E9,F63,F7,F82 \
-          --show-source \
-          --statistics
+        flake8 . --config=.github/workflows/.flake8 --count --select=E9,F63,F7,F82 --show-source --statistics
 
-    ####################################################
-    # Get Changed Python Files
-    ####################################################
-    - name: Get Changed Python Files
+    - name: Get Changed Python Files in PR
+      id: changed-files
       run: |
-        FILES=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD | grep '\.py$' | tr '\n' ' ' || true)
-
-        echo "Changed Python files:"
-        echo "$FILES"
-
+        PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
+        PR_HEAD_PARENT=$(git rev-parse ${PR_HEAD_SHA}^)
+        FILES=$(git diff --name-only --diff-filter=ACM ${PR_HEAD_PARENT} ${PR_HEAD_SHA} | grep '\.py$' | tr '\n' ' ' || true)
         echo "PR_FILES=$FILES" >> $GITHUB_ENV
 
-    ####################################################
-    # Flake8 Warnings
-    ####################################################
-    - name: Run Flake8 (Unused Imports)
+    - name: Run Code Quality Check (Warnings for Unused Imports)
       run: |
         if [ -z "${{ env.PR_FILES }}" ]; then
-          echo "No Python files changed."
+          echo "No Python files modified in this PR. Skipping unused imports check."
         else
-          flake8 ${{ env.PR_FILES }} \
-            --config=.github/workflows/.flake8 \
-            --count \
-            --exit-zero \
-            --select=F401 \
-            --show-source \
-            --statistics
+          flake8 ${{ env.PR_FILES }} --config=.github/workflows/.flake8 --count --exit-zero --select=F401 --show-source --statistics
         fi
 
-    ####################################################
-    # Custom Validator
-    ####################################################
     - name: Run Custom Validator
       run: |
         if [ -z "${{ env.PR_FILES }}" ]; then
-          echo "No Python files changed."
+          echo "No Python files modified in this PR. Skipping custom validation."
         else
           python .github/workflows/validator.py ${{ env.PR_FILES }}
         fi
