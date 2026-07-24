@@ -35,22 +35,6 @@ jobs:
           FILES=$( (git diff --name-only --diff-filter=ACM HEAD~1 HEAD 2>/dev/null || git diff --name-only --diff-filter=ACM $(git rev-list --max-parents=0 HEAD) HEAD) | grep '\.py$' | tr '\n' ' ' || true)
           echo "PR_FILES=$FILES" >> $GITHUB_ENV
 
-      ####################################################
-      # Prepare only changed files for Gitleaks
-      ####################################################
-      - name: Prepare changed files
-        run: |
-          mkdir changed_files
-
-          while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              mkdir -p "changed_files/$(dirname "$file")"
-              cp "$file" "changed_files/$file"
-            fi
-          done < changed_files.txt
-
-          echo "Files copied for Gitleaks:"
-          find changed_files
       - name: Verify changed_files folder
         run: |
           echo "Contents of changed_files:"
