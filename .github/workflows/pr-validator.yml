@@ -39,7 +39,18 @@ jobs:
 
         echo "== Python =="    ; cat py_files.txt    || true
         echo "== Notebooks ==" ; cat ipynb_files.txt || true
+    - name: Debug Changed Files
+      run: |
+        echo "========== changed_files.txt =========="
+        cat changed_files.txt || true
 
+        echo ""
+        echo "========== py_files.txt =========="
+        cat py_files.txt || true
+
+        echo ""
+        echo "========== ipynb_files.txt =========="
+        cat ipynb_files.txt || true
     - name: Syntax Check (.py)  [FAIL on error]
       run: |
         if [ -s py_files.txt ]; then
