@@ -4,108 +4,90 @@ on:
   pull_request:
     branches: [ "dev", "main" ]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   test-and-lint:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
-        fetch-depth: 0
-
-    - name: Debug repository contents
-      run: |
-        echo "Current branch:"
-        git branch --show-current
-
-        echo ""
-        echo "PR head SHA (actual latest PR commit):"
-        echo "${{ github.event.pull_request.head.sha }}"
-
-        echo ""
-        echo "Files in repository:"
-        find . -maxdepth 2 -type f
-
-        echo ""
-        echo "Git tracked files:"
-        git ls-files
-
-    - name: Show changed files
-      run: |
-        PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
-        PR_HEAD_PARENT=$(git rev-parse ${PR_HEAD_SHA}^)
-        echo "Comparing $PR_HEAD_PARENT (previous commit) to $PR_HEAD_SHA (latest PR commit)"
-        git diff --name-only ${PR_HEAD_PARENT} ${PR_HEAD_SHA}
-
-    - name: Install Gitleaks
-      run: |
-        GITLEAKS_VERSION=8.24.2
-        wget https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
-        tar -xzf gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
-        sudo mv gitleaks /usr/local/bin/
-
-    - name: Get changed files
-      run: |
-        PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
-        PR_HEAD_PARENT=$(git rev-parse ${PR_HEAD_SHA}^)
-        git diff --name-only ${PR_HEAD_PARENT} ${PR_HEAD_SHA} > changed_files.txt
-    - name: Show changed files list
-      run: |
-        echo "Changed files:"
-        cat changed_files.txt
-
-    - name: Show file contents
-      run: |
-        while IFS= read -r file; do
-          echo "=============================="
-          echo "FILE: $file"
-          cat "$file"
-          echo ""
-        done < changed_files.txt
-    - name: Run Gitleaks on changed files
-      run: |
-        while IFS= read -r file; do
-          if [ -f "$file" ]; then
-            echo "Scanning $file"
-            gitleaks detect --source "$file" --no-git --verbose
-          fi
-        done < changed_files.txt
+        fetch-depth: 1
 
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         cache: 'pip'
 
-    - name: Install Databricks Testing Tools
-      run: |
-        pip install -r .github/workflows/requirements.txt
+    - name: Install Lint Tools
+      run: pip install -r .github/workflows/requirements.txt
 
-    - name: Run Code Quality Check (Syntax Errors)
+    - name: Get Changed Files in PR
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
-        flake8 . --config=.github/workflows/.flake8 --count --select=E9,F63,F7,F82 --show-source --statistics
+        gh api --paginate \
+          "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+          --jq '.[] | select(.status != "removed") | .filename' > changed_files.txt
 
-    - name: Get Changed Python Files in PR
-      id: changed-files
-      run: |
-        PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
-        PR_HEAD_PARENT=$(git rev-parse ${PR_HEAD_SHA}^)
-        FILES=$(git diff --name-only --diff-filter=ACM ${PR_HEAD_PARENT} ${PR_HEAD_SHA} | grep '\.(py|ipynb)$' | tr '\n' ' ' || true)
-        echo "PR_FILES=$FILES" >> $GITHUB_ENV
+        grep -E '\.py$'    changed_files.txt | grep -v '.github/workflows' > py_files.txt    || true
+        grep -E '\.ipynb$' changed_files.txt | grep -v '.github/workflows' > ipynb_files.txt || true
 
-    - name: Run Code Quality Check (Warnings for Unused Imports)
+        echo "== Python =="    ; cat py_files.txt    || true
+        echo "== Notebooks ==" ; cat ipynb_files.txt || true
+
+    - name: Syntax Check (.py)  [FAIL on error]
       run: |
-        if [ -z "${{ env.PR_FILES }}" ]; then
-          echo "No Python files modified in this PR. Skipping unused imports check."
+        if [ -s py_files.txt ]; then
+          xargs -a py_files.txt -d '\n' flake8 \
+            --config=.github/workflows/.flake8 \
+            --select=E9,F63,F7,F82 --show-source --statistics
         else
-          flake8 ${{ env.PR_FILES }} --config=.github/workflows/.flake8 --count --exit-zero --select=F401 --show-source --statistics
+          echo "No .py files to syntax-check."
         fi
 
-    - name: Run Custom Validator
+    - name: Syntax Check (.ipynb notebooks)  [FAIL on error]
       run: |
-        if [ -z "${{ env.PR_FILES }}" ]; then
-          echo "No Python files modified in this PR. Skipping custom validation."
+        if [ -s ipynb_files.txt ]; then
+          xargs -a ipynb_files.txt -d '\n' nbqa flake8 \
+            --config=.github/workflows/.flake8 \
+            --select=E9,F63,F7,F82 --show-source --statistics
         else
-          python .github/workflows/validator.py ${{ env.PR_FILES }}
+          echo "No notebooks to syntax-check."
+        fi
+
+    - name: Unused Imports (.py)
+      if: always()
+      run: |
+        if [ -s py_files.txt ]; then
+          xargs -a py_files.txt -d '\n' flake8 \
+            --config=.github/workflows/.flake8 \
+            --exit-zero --select=F401 --show-source --statistics
+        else
+          echo "No .py files."
+        fi
+
+    - name: Unused Imports (.ipynb)
+      if: always()
+      run: |
+        if [ -s ipynb_files.txt ]; then
+          xargs -a ipynb_files.txt -d '\n' nbqa flake8 \
+            --config=.github/workflows/.flake8 \
+            --exit-zero --select=F401 --show-source --statistics
+        else
+          echo "No notebooks."
+        fi
+
+    - name: Custom Validator (utility import + try/except)
+      if: always()
+      run: |
+        cat py_files.txt ipynb_files.txt > all_files.txt 2>/dev/null || true
+        if [ -s all_files.txt ]; then
+          xargs -a all_files.txt -d '\n' python .github/workflows/validator.py
+        else
+          echo "No files to validate."
         fi

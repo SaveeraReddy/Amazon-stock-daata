@@ -1,5 +1,5 @@
 [flake8]
-builtins = spark,dbutils,display
+builtins = spark,dbutils,display,displayHTML,sc,sqlContext,getArgument,spark_partition_id
 
 exclude =
     *advanced_metric_campaign_program_data_report_v1.py*,
