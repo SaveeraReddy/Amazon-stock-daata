@@ -146,9 +146,16 @@ def validate_file(file_path):
             return errors, warnings
     else:
         with open(file_path, "r", encoding="utf-8") as file:
-            source = file.read()
-    secret_errors = check_secrets(source)
-    errors.extend(secret_errors)
+           source = file.read()
+        errors.extend(check_secrets(source))
+
+        tree = ast.parse(source)
+
+        util_errors, util_warnings = check_utility(tree, source)
+        errors.extend(util_errors)
+
+        try_errors, try_warnings = check_try_except(tree)
+        errors.extend(try_errors)
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
