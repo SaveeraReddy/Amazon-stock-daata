@@ -4,8 +4,29 @@ import sys
 import tokenize
 import os
 import json
+import re
+# --------------------------------------------------------
+# Secret Detection
+# --------------------------------------------------------
 
-
+SECRET_PATTERNS = [
+    (
+        "Databricks Personal Access Token",
+        re.compile(r"dapi[a-zA-Z0-9]{32,}"),
+    ),
+    (
+        "GitHub Personal Access Token",
+        re.compile(r"\bghp_[A-Za-z0-9]{36}\b"),
+    ),
+    (
+        "GitHub Fine-grained PAT",
+        re.compile(r"\bgithub_pat_[A-Za-z0-9_]{82,}\b"),
+    ),
+    (
+        "AWS Access Key",
+        re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    ),
+]
 def _clean_cell_source(source_lines):
     """
     Notebook code-cell source is converting into parseable Python:
@@ -126,7 +147,8 @@ def validate_file(file_path):
     else:
         with open(file_path, "r", encoding="utf-8") as file:
             source = file.read()
-
+    secret_errors = check_secrets(source)
+    errors.extend(secret_errors)
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
@@ -143,7 +165,16 @@ def validate_file(file_path):
 
     return errors, warnings
 
+def check_secrets(source):
+    errors = []
 
+    for secret_name, pattern in SECRET_PATTERNS:
+        for match in pattern.finditer(source):
+            errors.append(
+                f"Potential {secret_name} detected: {match.group(0)}"
+            )
+
+    return errors
 def main():
     print("===== Custom PR Validator Running =====")
 
