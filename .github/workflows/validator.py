@@ -140,22 +140,21 @@ def validate_file(file_path):
     errors = []
     warnings = []
 
+    with open(file_path, "r", encoding="utf-8") as file:
+        raw_text = file.read()
+
+    # Secret scan runs on the RAW file — catches tokens anywhere:
+    # code cells, markdown cells, cell outputs, metadata, or plain .py source.
+    errors.extend(check_secrets(raw_text))
+
     if file_path.endswith('.ipynb'):
         source = extract_code_from_ipynb(file_path)
-        if not source.strip():
-            return errors, warnings
     else:
-        with open(file_path, "r", encoding="utf-8") as file:
-           source = file.read()
-        errors.extend(check_secrets(source))
+        source = raw_text
 
-        tree = ast.parse(source)
+    if not source.strip():
+        return errors, warnings
 
-        util_errors, util_warnings = check_utility(tree, source)
-        errors.extend(util_errors)
-
-        try_errors, try_warnings = check_try_except(tree)
-        errors.extend(try_errors)
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
