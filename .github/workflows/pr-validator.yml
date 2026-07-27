@@ -81,10 +81,6 @@ jobs:
         else
           echo "No notebooks."
         fi
-    - name: Show files passed to validator
-      run: |
-        echo "Files passed to validator:"
-        cat all_files.txt
     - name: Custom Validator (utility import + try/except)
       if: always()
       run: |
