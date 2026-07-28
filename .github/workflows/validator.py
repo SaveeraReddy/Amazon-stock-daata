@@ -89,9 +89,6 @@ def check_utility(tree, source):
     utility_used = False
 
     for node in ast.walk(tree):
-        # --- Import detection: covers `from databricks import utility`,
-        #     `from databricks import othermodule` (as long as it's under databricks),
-        #     `from databricks.othermodule import utility`, aliased imports, etc. ---
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
             if module == "databricks" or module.startswith("databricks."):
@@ -101,14 +98,11 @@ def check_utility(tree, source):
                         import_found = True
 
         elif isinstance(node, ast.Import):
-            # covers `import databricks.utility` / `import databricks.utility as utility`
             for alias in node.names:
                 imported_name = alias.asname or alias.name
                 if alias.name == "databricks.utility" or imported_name == "utility":
                     import_found = True
 
-        # --- Usage detection: covers utility.foo(), othermodule.utility.foo(),
-        #     utility passed as an argument, etc. ---
         if isinstance(node, ast.Name) and node.id == "utility":
             utility_used = True
         elif isinstance(node, ast.Attribute) and node.attr == "utility":
