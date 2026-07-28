@@ -82,7 +82,6 @@ def find_utility_in_comments(source):
         pass
     return lines
 
-
 def check_utility(tree, source):
     errors = []
     warnings = []
@@ -91,11 +90,23 @@ def check_utility(tree, source):
 
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            if node.module == "databricks" and any(alias.name == "utility" for alias in node.names):
-                import_found = True
-        elif isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name) and node.value.id == "utility":
-                utility_used = True
+            module = node.module or ""
+            if module == "databricks" or module.startswith("databricks."):
+                for alias in node.names:
+                    imported_name = alias.asname or alias.name
+                    if alias.name == "utility" or imported_name == "utility":
+                        import_found = True
+
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                imported_name = alias.asname or alias.name
+                if alias.name == "databricks.utility" or imported_name == "utility":
+                    import_found = True
+
+        if isinstance(node, ast.Name) and node.id == "utility":
+            utility_used = True
+        elif isinstance(node, ast.Attribute) and node.attr == "utility":
+            utility_used = True
 
     comment_lines = find_utility_in_comments(source)
 
@@ -140,26 +151,25 @@ def validate_file(file_path):
     errors = []
     warnings = []
 
+    with open(file_path, "r", encoding="utf-8") as file:
+        raw_text = file.read()
+
+    # Secret scan runs on the RAW file — catches tokens anywhere:
+    # code cells, markdown cells, cell outputs, metadata, or plain .py source.
+    errors.extend(check_secrets(raw_text))
+
     if file_path.endswith('.ipynb'):
         source = extract_code_from_ipynb(file_path)
-        if not source.strip():
-            return errors, warnings
     else:
-        with open(file_path, "r", encoding="utf-8") as file:
-           source = file.read()
-        errors.extend(check_secrets(source))
+        source = raw_text
 
-        tree = ast.parse(source)
+    if not source.strip():
+        return  warnings
 
-        util_errors, util_warnings = check_utility(tree, source)
-        errors.extend(util_errors)
-
-        try_errors, try_warnings = check_try_except(tree)
-        errors.extend(try_errors)
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
-        errors.append(f"SyntaxError: {e}. (Check for a missing 'except' block or unclosed brackets).")
+        error.append(f"SyntaxError: {e}. (Check for a missing 'except' block or unclosed brackets).")
         return errors, warnings
 
     util_errors, util_warnings = check_utility(tree, source)
