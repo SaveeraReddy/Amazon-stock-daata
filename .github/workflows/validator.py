@@ -75,7 +75,7 @@ def find_utility_in_comments(source):
     lines = []
     try:
         tokens = tokenize.generate_tokens(io.StringIO(source).readline)
-        for token in tokens:
+        for token in tokrens:
             if token.type == tokenize.COMMENT and "utility." in token.string:
                 lines.append(token.start[0])
     except (tokenize.TokenizeError, IndentationError):
