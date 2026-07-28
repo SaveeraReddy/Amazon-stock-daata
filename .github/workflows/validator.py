@@ -82,7 +82,6 @@ def find_utility_in_comments(source):
         pass
     return lines
 
-
 def check_utility(tree, source):
     errors = []
     warnings = []
@@ -90,12 +89,30 @@ def check_utility(tree, source):
     utility_used = False
 
     for node in ast.walk(tree):
+        # --- Import detection: covers `from databricks import utility`,
+        #     `from databricks import othermodule` (as long as it's under databricks),
+        #     `from databricks.othermodule import utility`, aliased imports, etc. ---
         if isinstance(node, ast.ImportFrom):
-            if node.module == "databricks" and any(alias.name == "utility" for alias in node.names):
-                import_found = True
-        elif isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name) and node.value.id == "utility":
-                utility_used = True
+            module = node.module or ""
+            if module == "databricks" or module.startswith("databricks."):
+                for alias in node.names:
+                    imported_name = alias.asname or alias.name
+                    if alias.name == "utility" or imported_name == "utility":
+                        import_found = True
+
+        elif isinstance(node, ast.Import):
+            # covers `import databricks.utility` / `import databricks.utility as utility`
+            for alias in node.names:
+                imported_name = alias.asname or alias.name
+                if alias.name == "databricks.utility" or imported_name == "utility":
+                    import_found = True
+
+        # --- Usage detection: covers utility.foo(), othermodule.utility.foo(),
+        #     utility passed as an argument, etc. ---
+        if isinstance(node, ast.Name) and node.id == "utility":
+            utility_used = True
+        elif isinstance(node, ast.Attribute) and node.attr == "utility":
+            utility_used = True
 
     comment_lines = find_utility_in_comments(source)
 
@@ -153,12 +170,12 @@ def validate_file(file_path):
         source = raw_text
 
     if not source.strip():
-        return errors, warnings
+        return  warnings
 
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
-        errors.append(f"SyntaxError: {e}. (Check for a missing 'except' block or unclosed brackets).")
+        error.append(f"SyntaxError: {e}. (Check for a missing 'except' block or unclosed brackets).")
         return errors, warnings
 
     util_errors, util_warnings = check_utility(tree, source)
